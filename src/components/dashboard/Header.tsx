@@ -19,6 +19,18 @@ export function Header() {
           .toString()
           .padStart(2, "0")}`
       : null;
+  const connectionDotClass =
+    status.connectionState === "connected"
+      ? "bg-success"
+      : status.connectionState === "reconnecting"
+        ? "bg-amber-500"
+        : "bg-red-500";
+  const connectionLabel =
+    status.connectionState === "connected"
+      ? "Connected"
+      : status.connectionState === "reconnecting"
+        ? "Reconnecting"
+        : "Disconnected";
 
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
@@ -57,11 +69,11 @@ export function Header() {
 
           <div className="flex items-center gap-2 px-3 h-9 rounded-md border border-border bg-card">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-success animate-pulse-dot" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+              <span className={`absolute inline-flex h-full w-full rounded-full ${connectionDotClass} animate-pulse-dot`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${connectionDotClass}`} />
             </span>
             <span className="text-xs font-medium">
-              {status.connected ? "Live" : "Offline"}
+              {connectionLabel}
             </span>
             <span className="text-[10px] text-muted-foreground tabular-nums">
               {status.latencyMs}ms

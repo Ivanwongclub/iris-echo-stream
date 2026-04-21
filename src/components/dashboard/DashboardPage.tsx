@@ -1,10 +1,11 @@
-import { Activity, DollarSign, TrendingUp } from "lucide-react";
+import { Activity, DollarSign, RefreshCw, TrendingUp } from "lucide-react";
 import { Header } from "./Header";
 import { StatCard } from "./StatCard";
 import { SignalTable } from "./SignalTable";
 import { LivePriceChart } from "./LivePriceChart";
 import { useTradeStream } from "@/hooks/useTradeStream";
 import { AppPageShell } from "./AppPageShell";
+import { Button } from "@/components/ui/button";
 
 function DashboardContent() {
   const {
@@ -13,6 +14,8 @@ function DashboardContent() {
     profit24h,
     signalHistory,
     priceChangeDirection,
+    refreshStream,
+    status,
     trendStrengthPercent,
     trendStrengthDirection,
     trendStrengthReady,
@@ -46,6 +49,21 @@ function DashboardContent() {
             icon={TrendingUp}
             accent="primary"
             priceDirectionFlash={priceChangeDirection}
+            headerAction={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={refreshStream}
+                title="Refresh Stream"
+                aria-label="Refresh Stream"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${status.connectionState === "reconnecting" ? "animate-spin" : ""}`}
+                />
+              </Button>
+            }
           />
           <StatCard
             label="24h Profit"

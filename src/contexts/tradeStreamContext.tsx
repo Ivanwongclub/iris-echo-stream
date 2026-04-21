@@ -10,6 +10,8 @@ import {
 } from "react";
 import {
   getLatestKlines,
+  refreshBinanceStream,
+  subscribeStreamStatus,
   subscribeLatestKline,
   stopBinanceStream,
   type Kline,
@@ -42,6 +44,7 @@ interface TradeStreamContextValue {
   isNotificationEnabled: boolean;
   setIsNotificationEnabled: (enabled: boolean) => void;
   clearSignalHistory: () => void;
+  refreshStream: () => void;
 }
 
 const TradeStreamContext = createContext<TradeStreamContextValue | null>(null);
@@ -125,6 +128,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
     connected: false,
     latencyMs: 0,
     lastTickAt: null,
+    connectionState: "disconnected",
   });
   const [ethTick, setEthTick] = useState<PriceTick>({
     symbol: ETH_USDT_PAIR,
@@ -241,6 +245,15 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
     setLatestSignal(null);
   }, []);
 
+  const refreshStream = useCallback(() => {
+    setStatus((prev) => ({
+      ...prev,
+      connected: false,
+      connectionState: "reconnecting",
+    }));
+    refreshBinanceStream();
+  }, []);
+
   const analyzeAndDispatch = useCallback(
     (update: KlineUpdate) => {
       let market: ReturnType<typeof analyzeCurrentMarket> | null = null;
@@ -298,6 +311,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
         connected: true,
         latencyMs: Math.max(0, Date.now() - update.timestamp),
         lastTickAt: Date.now(),
+        connectionState: "connected",
       });
 
       if (market.longSignal) {
@@ -331,6 +345,20 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
     },
     [canTriggerSignal, getCooldownRemainingMs, playSignalPing],
   );
+
+  useEffect(() => {
+    const unsubscribeStatus = subscribeStreamStatus((streamStatus) => {
+      setStatus((prev) => ({
+        ...prev,
+        connected: streamStatus.connected,
+        connectionState: streamStatus.state,
+      }));
+    });
+
+    return () => {
+      unsubscribeStatus();
+    };
+  }, []);
 
   useEffect(() => {
     if (streamSubscriptionRef.current) {
@@ -373,6 +401,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       isNotificationEnabled,
       setIsNotificationEnabled,
       clearSignalHistory,
+      refreshStream,
     }),
     [
       ethPrice,
@@ -391,6 +420,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       status,
       isNotificationEnabled,
       clearSignalHistory,
+      refreshStream,
     ],
   );
 

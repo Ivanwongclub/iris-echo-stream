@@ -6,8 +6,8 @@ const TARGET_SYMBOL = "ETHUSDT";
 const MAX_CANDLES = 200;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
-const RECONNECT_BASE_DELAY_MS = 1_000;
-const RECONNECT_MAX_DELAY_MS = 20_000;
+const RECONNECT_INTERVAL_MS = 5_000;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 export interface Kline {
   symbol: string;
@@ -31,6 +31,14 @@ export interface KlineUpdate {
 }
 
 type KlineListener = (update: KlineUpdate) => void;
+type StreamStatusListener = (status: StreamStatusSnapshot) => void;
+
+export interface StreamStatusSnapshot {
+  connected: boolean;
+  state: "connected" | "disconnected" | "reconnecting";
+  reconnectAttempts: number;
+  lastMessageAt: number | null;
+}
 
 const klineBuffer: Kline[] = [];
 
@@ -42,7 +50,14 @@ let stopped = false;
 let lastMessageAt = 0;
 
 const latestKlineEvent = "latest-kline";
+const streamStatusEvent = "stream-status";
 const broadcaster = new EventTarget();
+let streamStatus: StreamStatusSnapshot = {
+  connected: false,
+  state: "disconnected",
+  reconnectAttempts: 0,
+  lastMessageAt: null,
+};
 
 const SYMBOL_PRICE_DECIMALS: Record<string, number> = {
   ETHUSDT: 2,
@@ -104,6 +119,14 @@ function startHeartbeatCheck() {
       restart("heartbeat timeout");
     }
   }, HEARTBEAT_CHECK_INTERVAL_MS);
+}
+
+function publishStreamStatus(next: Partial<StreamStatusSnapshot>) {
+  streamStatus = {
+    ...streamStatus,
+    ...next,
+  };
+  broadcaster.dispatchEvent(new CustomEvent(streamStatusEvent, { detail: streamStatus }));
 }
 
 function stopHeartbeatCheck() {
@@ -265,6 +288,12 @@ function attachSocketHandlers() {
   socket.onopen = () => {
     reconnectAttempts = 0;
     lastMessageAt = Date.now();
+    publishStreamStatus({
+      connected: true,
+      state: "connected",
+      reconnectAttempts: 0,
+      lastMessageAt,
+    });
     startHeartbeatCheck();
   };
 
@@ -276,6 +305,14 @@ function attachSocketHandlers() {
 
   socket.onclose = () => {
     stopHeartbeatCheck();
+    if (stopped) {
+      publishStreamStatus({
+        connected: false,
+        state: "disconnected",
+        reconnectAttempts: 0,
+      });
+      return;
+    }
     restart("websocket close");
   };
 }
@@ -294,13 +331,6 @@ function cleanupSocket() {
   socket = null;
 }
 
-function getReconnectDelay(attempt: number) {
-  const factor = Math.min(attempt, 6);
-  const delay = RECONNECT_BASE_DELAY_MS * 2 ** factor;
-  const jitter = Math.random() * 250;
-  return Math.min(delay + jitter, RECONNECT_MAX_DELAY_MS);
-}
-
 function restart(reason: string) {
   if (stopped) {
     return;
@@ -311,14 +341,30 @@ function restart(reason: string) {
     return;
   }
 
-  const delay = getReconnectDelay(reconnectAttempts);
-  logger.warn(`Restarting Binance stream (${reason}). Reconnect in ${Math.round(delay)}ms`);
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    publishStreamStatus({
+      connected: false,
+      state: "disconnected",
+      reconnectAttempts,
+    });
+    logger.error(`Binance stream stopped reconnecting after ${MAX_RECONNECT_ATTEMPTS} attempts (${reason})`);
+    return;
+  }
+
   reconnectAttempts += 1;
+  publishStreamStatus({
+    connected: false,
+    state: "reconnecting",
+    reconnectAttempts,
+  });
+  logger.warn(
+    `Restarting Binance stream (${reason}). Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${RECONNECT_INTERVAL_MS}ms`,
+  );
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();
-  }, delay);
+  }, RECONNECT_INTERVAL_MS);
 }
 
 function connect() {
@@ -331,6 +377,11 @@ function connect() {
   }
 
   cleanupSocket();
+  publishStreamStatus({
+    connected: false,
+    state: reconnectAttempts > 0 ? "reconnecting" : "disconnected",
+    reconnectAttempts,
+  });
   socket = new WebSocket(WS_URL);
   attachSocketHandlers();
 }
@@ -339,6 +390,7 @@ function ensureStarted() {
   if (typeof WebSocket === "undefined") {
     return;
   }
+  stopped = false;
   if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
     connect();
   }
@@ -359,6 +411,21 @@ export function subscribeLatestKline(listener: KlineListener): () => void {
   return () => broadcaster.removeEventListener(latestKlineEvent, eventListener);
 }
 
+export function subscribeStreamStatus(listener: StreamStatusListener): () => void {
+  listener(streamStatus);
+  const wrappedListener = (event: Event) => {
+    const detail = (event as CustomEvent<StreamStatusSnapshot>).detail;
+    if (detail) {
+      listener(detail);
+    }
+  };
+
+  const eventListener = wrappedListener as EventListener;
+  broadcaster.addEventListener(streamStatusEvent, eventListener);
+
+  return () => broadcaster.removeEventListener(streamStatusEvent, eventListener);
+}
+
 export function getLatestKlines(): Kline[] {
   ensureStarted();
   return [...klineBuffer];
@@ -366,11 +433,32 @@ export function getLatestKlines(): Kline[] {
 
 export function stopBinanceStream() {
   stopped = true;
+  reconnectAttempts = 0;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
   cleanupSocket();
+  publishStreamStatus({
+    connected: false,
+    state: "disconnected",
+    reconnectAttempts: 0,
+  });
+}
+
+export function startBinanceStream() {
+  stopped = false;
+  publishStreamStatus({
+    connected: false,
+    state: "reconnecting",
+    reconnectAttempts,
+  });
+  ensureStarted();
+}
+
+export function refreshBinanceStream() {
+  stopBinanceStream();
+  startBinanceStream();
 }
 
 // Start automatically for applications that rely on a hot stream.

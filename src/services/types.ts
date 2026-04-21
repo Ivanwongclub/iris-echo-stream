@@ -24,6 +24,7 @@ export interface SystemStatus {
   connected: boolean;
   latencyMs: number;
   lastTickAt: number | null;
+  connectionState: "connected" | "disconnected" | "reconnecting";
 }
 
 export interface DashboardState {

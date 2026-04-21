@@ -1,4 +1,5 @@
 import { type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useFlashOnChange } from "@/hooks/useFlashOnChange";
 import type { PriceChangeDirection } from "@/contexts/tradeStreamContext";
@@ -13,6 +14,7 @@ interface StatCardProps {
   icon: LucideIcon;
   accent?: "primary" | "success" | "fuchsia";
   priceDirectionFlash?: PriceChangeDirection | null;
+  headerAction?: ReactNode;
 }
 
 export function StatCard({
@@ -25,6 +27,7 @@ export function StatCard({
   icon: Icon,
   accent = "primary",
   priceDirectionFlash,
+  headerAction,
 }: StatCardProps) {
   const flashClass = useFlashOnChange(numericValue ?? 0);
   const directionClass =
@@ -57,8 +60,11 @@ export function StatCard({
             {display}
           </p>
         </div>
-        <div className={cn("h-9 w-9 rounded-md flex items-center justify-center", accentBg)}>
-          <Icon className="h-4 w-4" />
+        <div className="flex items-center gap-2">
+          {headerAction}
+          <div className={cn("h-9 w-9 rounded-md flex items-center justify-center", accentBg)}>
+            <Icon className="h-4 w-4" />
+          </div>
         </div>
       </div>
       {delta !== undefined && (
