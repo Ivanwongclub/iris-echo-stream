@@ -6,8 +6,30 @@ import { useTradeStream } from "@/hooks/useTradeStream";
 import { AppPageShell } from "./AppPageShell";
 
 function DashboardContent() {
-  const { ethPrice, ethTick, profit24h, signalHistory, priceChangeDirection } = useTradeStream();
+  const {
+    ethPrice,
+    ethTick,
+    profit24h,
+    signalHistory,
+    priceChangeDirection,
+    trendStrengthPercent,
+    trendStrengthDirection,
+    trendStrengthReady,
+  } = useTradeStream();
   const activeSignals = signalHistory.filter((s) => s.status === "ACTIVE").length;
+  const trendStrengthLabel = trendStrengthReady
+    ? trendStrengthDirection === "UP"
+      ? `上方 ${trendStrengthPercent.toFixed(2)}%`
+      : trendStrengthDirection === "DOWN"
+        ? `下方 ${trendStrengthPercent.toFixed(2)}%`
+        : `平盤 ${trendStrengthPercent.toFixed(2)}%`
+    : "EMA 未就緒";
+  const trendBarClass =
+    trendStrengthDirection === "UP"
+      ? "bg-success"
+      : trendStrengthDirection === "DOWN"
+        ? "bg-fuchsia-accent"
+        : "bg-muted";
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -41,6 +63,19 @@ function DashboardContent() {
             icon={Activity}
             accent="fuchsia"
           />
+          <div className="rounded-lg border border-border bg-card p-5 shadow-soft">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Trend Strength</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight mt-2">
+              {trendStrengthLabel}
+            </p>
+            <div className="mt-3 h-2 w-full rounded-full bg-muted/60 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${trendBarClass}`}
+                style={{ width: `${Math.min(trendStrengthPercent, 100)}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Price distance from EMA200</p>
+          </div>
         </div>
 
         <SignalTable />

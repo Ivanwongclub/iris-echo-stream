@@ -23,6 +23,9 @@ export type PriceChangeDirection = "up" | "down";
 interface TradeStreamContextValue {
   ethPrice: number;
   priceChangeDirection: PriceChangeDirection;
+  trendStrengthPercent: number;
+  trendStrengthDirection: "UP" | "DOWN" | "FLAT";
+  trendStrengthReady: boolean;
   latestSignal: TradeSignal | null;
   signalHistory: TradeSignal[];
   activeStrategy: "LONG_ONLY" | "WAITING";
@@ -175,6 +178,9 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   const [ethPrice, setEthPrice] = useState(0);
   const [priceChangeDirection, setPriceChangeDirection] =
     useState<PriceChangeDirection>("up");
+  const [trendStrengthPercent, setTrendStrengthPercent] = useState(0);
+  const [trendStrengthDirection, setTrendStrengthDirection] = useState<"UP" | "DOWN" | "FLAT">("FLAT");
+  const [trendStrengthReady, setTrendStrengthReady] = useState(false);
   const [latestSignal, setLatestSignal] = useState<TradeSignal | null>(null);
   const [signalHistory, setSignalHistory] = useState<TradeSignal[]>(initialSignalHistory);
   const [activeStrategy, setActiveStrategy] = useState<"LONG_ONLY" | "WAITING">("WAITING");
@@ -317,6 +323,20 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       marketPairRef.current = normalizedPair;
       setEthPrice(nextPrice);
       setPriceChangeDirection(direction);
+      if (market.ema200 !== null && Number.isFinite(market.ema200) && market.ema200 > 0) {
+        const diffPct = Number(
+          (Math.abs((nextPrice - market.ema200) / market.ema200) * 100).toFixed(2),
+        );
+        setTrendStrengthPercent(Math.min(diffPct, 100));
+        setTrendStrengthDirection(
+          nextPrice > market.ema200 ? "UP" : nextPrice < market.ema200 ? "DOWN" : "FLAT",
+        );
+        setTrendStrengthReady(true);
+      } else {
+        setTrendStrengthPercent(0);
+        setTrendStrengthDirection("FLAT");
+        setTrendStrengthReady(false);
+      }
       setActiveStrategy(getStrategyForMarket(market));
       setCooldownRemainingMs(getCooldownRemainingMs(normalizedPair, market.timestamp || Date.now()));
 
@@ -397,6 +417,9 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       latestSignal,
       signalHistory,
       activeStrategy,
+      trendStrengthPercent,
+      trendStrengthDirection,
+      trendStrengthReady,
       cooldownRemainingMs,
       signals: signalHistory,
       ethTick,
@@ -413,6 +436,9 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       latestSignal,
       signalHistory,
       activeStrategy,
+      trendStrengthPercent,
+      trendStrengthDirection,
+      trendStrengthReady,
       cooldownRemainingMs,
       ethTick,
       profit24h,
