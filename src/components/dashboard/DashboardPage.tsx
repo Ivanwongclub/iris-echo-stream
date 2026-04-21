@@ -2,6 +2,7 @@ import { Activity, DollarSign, TrendingUp } from "lucide-react";
 import { Header } from "./Header";
 import { StatCard } from "./StatCard";
 import { SignalTable } from "./SignalTable";
+import { LivePriceChart } from "./LivePriceChart";
 import { useTradeStream } from "@/hooks/useTradeStream";
 import { AppPageShell } from "./AppPageShell";
 
@@ -77,6 +78,7 @@ function DashboardContent() {
             <p className="mt-2 text-xs text-muted-foreground">Price distance from EMA200</p>
           </div>
         </div>
+        <LivePriceChart />
 
         <SignalTable />
       </main>

@@ -9,8 +9,10 @@ import {
   useState,
 } from "react";
 import {
+  getLatestKlines,
   subscribeLatestKline,
   stopBinanceStream,
+  type Kline,
   type KlineUpdate,
 } from "../../services/binanceStream";
 import { analyzeCurrentMarket } from "../../services/tradingAlgo";
@@ -26,6 +28,8 @@ interface TradeStreamContextValue {
   trendStrengthPercent: number;
   trendStrengthDirection: "UP" | "DOWN" | "FLAT";
   trendStrengthReady: boolean;
+  ema200: number | null;
+  recentKlines: Kline[];
   latestSignal: TradeSignal | null;
   signalHistory: TradeSignal[];
   activeStrategy: "LONG_ONLY" | "WAITING";
@@ -181,6 +185,8 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   const [trendStrengthPercent, setTrendStrengthPercent] = useState(0);
   const [trendStrengthDirection, setTrendStrengthDirection] = useState<"UP" | "DOWN" | "FLAT">("FLAT");
   const [trendStrengthReady, setTrendStrengthReady] = useState(false);
+  const [ema200, setEma200] = useState<number | null>(null);
+  const [recentKlines, setRecentKlines] = useState<Kline[]>([]);
   const [latestSignal, setLatestSignal] = useState<TradeSignal | null>(null);
   const [signalHistory, setSignalHistory] = useState<TradeSignal[]>(initialSignalHistory);
   const [activeStrategy, setActiveStrategy] = useState<"LONG_ONLY" | "WAITING">("WAITING");
@@ -337,6 +343,8 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
         setTrendStrengthDirection("FLAT");
         setTrendStrengthReady(false);
       }
+      setEma200(market.ema200 ?? null);
+      setRecentKlines(getLatestKlines().slice(-50));
       setActiveStrategy(getStrategyForMarket(market));
       setCooldownRemainingMs(getCooldownRemainingMs(normalizedPair, market.timestamp || Date.now()));
 
@@ -420,6 +428,8 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       trendStrengthPercent,
       trendStrengthDirection,
       trendStrengthReady,
+      ema200,
+      recentKlines,
       cooldownRemainingMs,
       signals: signalHistory,
       ethTick,
@@ -439,6 +449,8 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       trendStrengthPercent,
       trendStrengthDirection,
       trendStrengthReady,
+      ema200,
+      recentKlines,
       cooldownRemainingMs,
       ethTick,
       profit24h,
