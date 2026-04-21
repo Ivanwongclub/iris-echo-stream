@@ -6,8 +6,8 @@ import { SignalTable } from "./SignalTable";
 import { TradeStreamProvider, useTradeStream } from "@/hooks/useTradeStream";
 
 function DashboardContent() {
-  const { ethTick, profit24h, signals } = useTradeStream();
-  const activeSignals = signals.filter((s) => s.status === "ACTIVE").length;
+  const { ethPrice, ethTick, profit24h, signalHistory, priceChangeDirection } = useTradeStream();
+  const activeSignals = signalHistory.filter((s) => s.status === "ACTIVE").length;
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -16,12 +16,13 @@ function DashboardContent() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <StatCard
             label="ETH Price"
-            value={ethTick.price}
-            numericValue={ethTick.price}
+            value={ethPrice}
+            numericValue={ethPrice}
             format={(n) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             delta={ethTick.changePct24h}
             icon={TrendingUp}
             accent="primary"
+            priceDirectionFlash={priceChangeDirection}
           />
           <StatCard
             label="24h Profit"

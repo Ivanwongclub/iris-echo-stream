@@ -25,19 +25,18 @@ const statusLabel: Record<SignalStatus, string> = {
 };
 
 export function SignalTable() {
-  const { signals } = useTradeStream();
+  const { signalHistory, latestSignal } = useTradeStream();
+  const latestSignalId = latestSignal?.id;
 
   return (
     <div className="rounded-lg border border-border bg-card shadow-soft overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold">Real-time Signals</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Streaming from strategy engine · updates every 5s
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Streaming from strategy engine · updates every candle</p>
         </div>
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          {signals.length} signals
+          {signalHistory.length} signals
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -54,7 +53,7 @@ export function SignalTable() {
             </tr>
           </thead>
           <tbody>
-            {signals.map((s) => (
+            {signalHistory.map((s) => (
               <tr
                 key={s.id}
                 className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors animate-fade-in"
@@ -73,15 +72,16 @@ export function SignalTable() {
                     )}
                   >
                     {s.action}
+                    {s.id === latestSignalId ? (
+                      <span className="ml-1 inline-flex items-center rounded border border-success/30 bg-success/20 text-success px-1 py-0.5 text-[9px] font-bold animate-pulse">
+                        NEW
+                      </span>
+                    ) : null}
                   </span>
                 </td>
                 <td className="px-3 py-3 text-right tabular-nums">{fmtPrice(s.entryPrice)}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                  {fmtPrice(s.stopLoss)}
-                </td>
-                <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                  {fmtPrice(s.takeProfit1)}
-                </td>
+                <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmtPrice(s.stopLoss)}</td>
+                <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmtPrice(s.takeProfit1)}</td>
                 <td className="px-5 py-3">
                   <span
                     className={cn(

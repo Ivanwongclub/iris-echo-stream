@@ -1,6 +1,7 @@
 import { type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFlashOnChange } from "@/hooks/useFlashOnChange";
+import type { PriceChangeDirection } from "@/contexts/tradeStreamContext";
 
 interface StatCardProps {
   label: string;
@@ -11,6 +12,7 @@ interface StatCardProps {
   deltaSuffix?: string;
   icon: LucideIcon;
   accent?: "primary" | "success" | "fuchsia";
+  priceDirectionFlash?: PriceChangeDirection | null;
 }
 
 export function StatCard({
@@ -22,8 +24,15 @@ export function StatCard({
   deltaSuffix = "%",
   icon: Icon,
   accent = "primary",
+  priceDirectionFlash,
 }: StatCardProps) {
   const flashClass = useFlashOnChange(numericValue ?? 0);
+  const directionClass =
+    priceDirectionFlash === "up"
+      ? "bg-green-500/10"
+      : priceDirectionFlash === "down"
+        ? "bg-red-500/10"
+        : "";
   const display = typeof value === "number" && format ? format(value) : value;
 
   const accentBg =
@@ -37,13 +46,12 @@ export function StatCard({
     <div className="rounded-lg border border-border bg-card p-5 shadow-soft transition-shadow hover:shadow-elevated">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            {label}
-          </p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
           <p
             className={cn(
               "text-2xl font-semibold tabular-nums tracking-tight rounded-sm px-1 -mx-1",
               flashClass,
+              directionClass,
             )}
           >
             {display}

@@ -24,6 +24,13 @@ export interface MarketSignal {
   longSignal: boolean;
   reasons: string[];
   candleCount: number;
+  pair?: string;
+  entryPrice?: number;
+  stopLoss?: number;
+  takeProfit1?: number;
+  status?: string;
+  rsi?: number | null;
+  atr?: number | null;
 }
 
 interface AlgoConfig {
@@ -160,8 +167,7 @@ function calculateBollinger(closes: number[], period: number, multiplier: number
   const rounded = closes.map(round2);
   const recent = rounded.slice(-period);
   const middle = recent.reduce((acc, value) => acc + value, 0) / period;
-  const variance =
-    recent.reduce((acc, value) => acc + Math.pow(value - middle, 2), 0) / period;
+  const variance = recent.reduce((acc, value) => acc + Math.pow(value - middle, 2), 0) / period;
   const stdDev = Math.sqrt(variance);
 
   return {
@@ -253,8 +259,21 @@ export class TradingAlgo {
       longSignal,
       reasons,
       candleCount: count,
+      rsi: rsiResult?.current ?? null,
+      atr: atr14,
+      pair: normalizePair(latestSymbol),
     };
   }
+}
+
+function normalizePair(symbol: string): string {
+  if (symbol.includes("/")) {
+    return symbol;
+  }
+  if (symbol.length === 6) {
+    return `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
+  }
+  return symbol || "ETH/USDT";
 }
 
 const tradingAlgo = new TradingAlgo();
