@@ -33,7 +33,7 @@ export function SignalTable() {
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold">Real-time Signals</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Streaming from strategy engine · updates every candle</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Live ETHUSDT Strategy · 1m Candles</p>
         </div>
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           {signalHistory.length} signals

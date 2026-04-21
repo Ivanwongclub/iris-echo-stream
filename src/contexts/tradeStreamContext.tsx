@@ -47,6 +47,7 @@ interface TradeStreamContextValue {
 const TradeStreamContext = createContext<TradeStreamContextValue | null>(null);
 
 const SIGNAL_HISTORY_STORAGE_KEY = "iris-echo-stream:signal-history";
+const DATA_BOOTSTRAP_CLEAR_KEY = "iris-echo-stream:clear-fake-signals-v1";
 const MAX_SIGNAL_HISTORY = 20;
 const SIGNAL_LOCK_MS = 15 * 60 * 1000;
 const ETH_USDT_PAIR = "ETH/USDT";
@@ -68,77 +69,6 @@ function round2(value: number): number {
 
 function hasRisen(current: number, previous: number): boolean {
   return Number((current - previous).toFixed(4)) > PRICE_EPSILON;
-}
-
-function toSignal(value: unknown): TradeSignal | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const item = value as Record<string, unknown>;
-  const id = typeof item.id === "string" ? item.id : null;
-  const timestamp =
-    typeof item.timestamp === "number" && Number.isFinite(item.timestamp) ? item.timestamp : null;
-  const pair = typeof item.pair === "string" ? item.pair : null;
-  const action = item.action === "LONG" || item.action === "SHORT" ? item.action : "LONG";
-  const entryPrice =
-    typeof item.entryPrice === "number" && Number.isFinite(item.entryPrice) ? item.entryPrice : null;
-  const stopLoss =
-    typeof item.stopLoss === "number" && Number.isFinite(item.stopLoss) ? item.stopLoss : null;
-  const takeProfit1 =
-    typeof item.takeProfit1 === "number" && Number.isFinite(item.takeProfit1)
-      ? item.takeProfit1
-      : null;
-  const rawStatus = item.status;
-  const status =
-    rawStatus === "ACTIVE" ||
-    rawStatus === "TP1_HIT" ||
-    rawStatus === "SL_HIT" ||
-    rawStatus === "CLOSED" ||
-    rawStatus === "PENDING"
-      ? rawStatus
-      : "ACTIVE";
-
-  if (
-    !id ||
-    timestamp === null ||
-    !pair ||
-    entryPrice === null ||
-    stopLoss === null ||
-    takeProfit1 === null
-  ) {
-    return null;
-  }
-
-  return {
-    id,
-    timestamp,
-    pair,
-    action,
-    entryPrice,
-    stopLoss,
-    takeProfit1,
-    status,
-  };
-}
-
-function loadSignalHistory(): TradeSignal[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(SIGNAL_HISTORY_STORAGE_KEY);
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map(toSignal)
-      .filter((signal): signal is TradeSignal => signal !== null)
-      .slice(0, MAX_SIGNAL_HISTORY);
-  } catch {
-    return [];
-  }
 }
 
 function normalizeSignalFromMarket(market: ReturnType<typeof analyzeCurrentMarket>): TradeSignal {
@@ -178,7 +108,6 @@ function buildSignalAlertPayload(market: ReturnType<typeof analyzeCurrentMarket>
 }
 
 export function TradeStreamProvider({ children }: { children: ReactNode }) {
-  const initialSignalHistory = loadSignalHistory();
   const [ethPrice, setEthPrice] = useState(0);
   const [priceChangeDirection, setPriceChangeDirection] =
     useState<PriceChangeDirection>("up");
@@ -188,7 +117,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   const [ema200, setEma200] = useState<number | null>(null);
   const [recentKlines, setRecentKlines] = useState<Kline[]>([]);
   const [latestSignal, setLatestSignal] = useState<TradeSignal | null>(null);
-  const [signalHistory, setSignalHistory] = useState<TradeSignal[]>(initialSignalHistory);
+  const [signalHistory, setSignalHistory] = useState<TradeSignal[]>([]);
   const [activeStrategy, setActiveStrategy] = useState<"LONG_ONLY" | "WAITING">("WAITING");
   const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
   const [profit24h, setProfit24h] = useState(0);
@@ -235,14 +164,19 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    initialSignalHistory.forEach((signal) => {
-      const normalizedPair = normalizePair(signal.pair);
-      const existing = lastSignalByPairRef.current.get(normalizedPair);
-      if (existing === undefined || existing < signal.timestamp) {
-        lastSignalByPairRef.current.set(normalizedPair, signal.timestamp);
-      }
-    });
-  }, [initialSignalHistory]);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.localStorage.getItem(DATA_BOOTSTRAP_CLEAR_KEY)) {
+      return;
+    }
+
+    window.localStorage.clear();
+    window.localStorage.setItem(DATA_BOOTSTRAP_CLEAR_KEY, "1");
+    setSignalHistory([]);
+    setLatestSignal(null);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {

@@ -141,6 +141,7 @@ function parseKline(raw: unknown): Kline | null {
   const symbol = typeof k.s === "string" ? k.s.toUpperCase() : TARGET_SYMBOL;
 
   if (symbol !== TARGET_SYMBOL) {
+    console.error(`Invalid symbol in stream pipeline: ${symbol}`);
     if (DEBUG_MODE) {
       logger.warn("Invalid Data: unexpected symbol from stream", symbol);
     }
