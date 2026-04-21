@@ -1,15 +1,26 @@
 import { LayoutDashboard, Activity, LineChart, Wallet, Settings, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Link, useLocation } from "@tanstack/react-router";
 
 const nav = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
-  { label: "Signals", icon: Activity },
-  { label: "Positions", icon: LineChart },
-  { label: "Wallet", icon: Wallet },
-  { label: "Settings", icon: Settings },
+  { label: "Dashboard", icon: LayoutDashboard, to: "/" },
+  { label: "Signal History", icon: Activity, to: "/history" },
+  { label: "Backtest", icon: LineChart, to: "/backtest" },
+  { label: "Settings", icon: Settings, to: "/settings" },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  onNavigate?: () => void;
+}
+
+export function AppSidebar({ onNavigate }: AppSidebarProps) {
+  const location = useLocation();
+
+  const isActive = (path: string) => {
+    if (path === "/") return location.pathname === "/";
+    return location.pathname === path;
+  };
+
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="h-16 flex items-center gap-2 px-5 border-b border-border">
@@ -25,18 +36,22 @@ export function AppSidebar() {
       </div>
       <nav className="flex-1 p-3 space-y-1">
         {nav.map((item) => (
-          <button
+          <Link
             key={item.label}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-              item.active
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              isActive(item.to)
+                ? "bg-primary text-primary-foreground"
                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
             )}
+            to={item.to}
+            onClick={() => {
+              onNavigate?.();
+            }}
           >
             <item.icon className="h-4 w-4" />
             {item.label}
-          </button>
+          </Link>
         ))}
       </nav>
       <div className="p-4 border-t border-border">

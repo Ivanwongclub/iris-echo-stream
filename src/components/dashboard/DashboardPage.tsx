@@ -1,9 +1,9 @@
 import { Activity, DollarSign, TrendingUp } from "lucide-react";
-import { AppSidebar } from "./AppSidebar";
 import { Header } from "./Header";
 import { StatCard } from "./StatCard";
 import { SignalTable } from "./SignalTable";
-import { TradeStreamProvider, useTradeStream } from "@/hooks/useTradeStream";
+import { useTradeStream } from "@/hooks/useTradeStream";
+import { AppPageShell } from "./AppPageShell";
 
 function DashboardContent() {
   const { ethPrice, ethTick, profit24h, signalHistory, priceChangeDirection } = useTradeStream();
@@ -50,12 +50,5 @@ function DashboardContent() {
 }
 
 export function DashboardPage() {
-  return (
-    <TradeStreamProvider>
-      <div className="min-h-screen flex bg-background text-foreground">
-        <AppSidebar />
-        <DashboardContent />
-      </div>
-    </TradeStreamProvider>
-  );
+  return <AppPageShell><DashboardContent /></AppPageShell>;
 }
