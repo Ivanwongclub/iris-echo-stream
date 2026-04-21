@@ -1,4 +1,6 @@
 import { getLatestKlines, type Kline } from "./binanceStream";
+import { DEBUG_MODE } from "../src/config/debug";
+import { logger } from "../src/lib/logger";
 
 export type TrendDirection = "UP" | "DOWN" | "NEUTRAL";
 
@@ -299,17 +301,19 @@ export class TradingAlgo {
     }
 
     if (ema200 !== null && atr14 !== null && rsiResult !== null && bollinger !== null) {
-      console.table([
-        {
-          Price: currentPrice,
-          EMA200: ema200,
-          RSI: rsiCurrent,
-          BB_Middle: bollinger.middle,
-          symbol: latestSymbol,
-          timestamp: latest.closeTime,
-          signalLocked: cooldownActive,
-        },
-      ]);
+      if (DEBUG_MODE) {
+        logger.debug([
+          {
+            Price: currentPrice,
+            EMA200: ema200,
+            RSI: rsiCurrent,
+            BB_Middle: bollinger.middle,
+            symbol: latestSymbol,
+            timestamp: latest.closeTime,
+            signalLocked: cooldownActive,
+          },
+        ]);
+      }
     }
 
     return {

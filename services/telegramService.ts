@@ -1,4 +1,5 @@
 import type { MarketSignal } from "./tradingAlgo";
+import { logger } from "../src/lib/logger";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 const TELEGRAM_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN as string | undefined;
@@ -37,7 +38,7 @@ function buildPayload(signal: MarketSignal) {
 
 export async function sendSignalAlert(signal: MarketSignal): Promise<void> {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.warn("Telegram notification skipped: missing bot token or chat id");
+    logger.warn("Telegram notification skipped: missing bot token or chat id");
     return;
   }
 
@@ -55,9 +56,9 @@ export async function sendSignalAlert(signal: MarketSignal): Promise<void> {
 
     if (!res.ok) {
       const body = await res.text();
-      console.error(`Telegram send failed (${res.status}): ${body}`);
+      logger.error(`Telegram send failed (${res.status}): ${body}`);
     }
   } catch (error) {
-    console.error("Telegram send failed", error);
+    logger.error("Telegram send failed", error);
   }
 }

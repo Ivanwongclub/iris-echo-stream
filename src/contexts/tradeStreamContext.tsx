@@ -24,6 +24,8 @@ interface TradeStreamContextValue {
   priceChangeDirection: PriceChangeDirection;
   latestSignal: TradeSignal | null;
   signalHistory: TradeSignal[];
+  activeStrategy: "LONG_ONLY" | "WAITING";
+  cooldownRemainingMs: number;
   signals: TradeSignal[];
   ethTick: PriceTick;
   profit24h: number;
@@ -31,13 +33,15 @@ interface TradeStreamContextValue {
   isLive: boolean;
   isNotificationEnabled: boolean;
   setIsNotificationEnabled: (enabled: boolean) => void;
+  clearSignalHistory: () => void;
 }
 
 const TradeStreamContext = createContext<TradeStreamContextValue | null>(null);
 
 const SIGNAL_HISTORY_STORAGE_KEY = "iris-echo-stream:signal-history";
-const MAX_SIGNAL_HISTORY = 50;
+const MAX_SIGNAL_HISTORY = 20;
 const SIGNAL_LOCK_MS = 15 * 60 * 1000;
+const ETH_USDT_PAIR = "ETH/USDT";
 
 function normalizePair(symbol: string): string {
   if (symbol.includes("/")) {
@@ -46,7 +50,7 @@ function normalizePair(symbol: string): string {
   if (symbol.length === 6) {
     return `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
   }
-  return symbol || "ETH/USDT";
+  return symbol || ETH_USDT_PAIR;
 }
 
 function round2(value: number): number {
@@ -167,6 +171,8 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
     useState<PriceChangeDirection>("up");
   const [latestSignal, setLatestSignal] = useState<TradeSignal | null>(null);
   const [signalHistory, setSignalHistory] = useState<TradeSignal[]>(initialSignalHistory);
+  const [activeStrategy, setActiveStrategy] = useState<"LONG_ONLY" | "WAITING">("WAITING");
+  const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
   const [profit24h, setProfit24h] = useState(0);
   const [status, setStatus] = useState<SystemStatus>({
     connected: false,
@@ -174,7 +180,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
     lastTickAt: null,
   });
   const [ethTick, setEthTick] = useState<PriceTick>({
-    symbol: "ETH/USDT",
+    symbol: ETH_USDT_PAIR,
     price: 0,
     prevPrice: 0,
     changePct24h: 0,
@@ -185,11 +191,28 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   const isNotificationEnabledRef = useRef(true);
   const previousPriceRef = useRef(0);
   const lastSignalByPairRef = useRef<Map<string, number>>(new Map());
-  const canTriggerSignal = (pair: string, at: number) => {
+  const marketPairRef = useRef(ETH_USDT_PAIR);
+
+  const getCooldownRemainingMs = useCallback((pair: string, at = Date.now()): number => {
     const normalizedPair = normalizePair(pair);
-    const existing = lastSignalByPairRef.current.get(normalizedPair);
-    if (existing === undefined) return true;
-    return at - existing >= SIGNAL_LOCK_MS;
+    const lastSignalAt = lastSignalByPairRef.current.get(normalizedPair);
+    if (!lastSignalAt) return 0;
+
+    const remaining = SIGNAL_LOCK_MS - (at - lastSignalAt);
+    return remaining > 0 ? remaining : 0;
+  }, []);
+
+  const canTriggerSignal = useCallback(
+    (pair: string, at: number) => getCooldownRemainingMs(pair, at) === 0,
+    [getCooldownRemainingMs],
+  );
+
+  const getStrategyForMarket = (market: ReturnType<typeof analyzeCurrentMarket>) => {
+    if (!market.isReady || market.ema200 === null) {
+      return "WAITING";
+    }
+
+    return market.currentPrice > market.ema200 ? "LONG_ONLY" : "WAITING";
   };
 
   useEffect(() => {
@@ -201,6 +224,15 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       }
     });
   }, [initialSignalHistory]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const remaining = getCooldownRemainingMs(marketPairRef.current);
+      setCooldownRemainingMs(remaining);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [getCooldownRemainingMs]);
 
   useEffect(() => {
     isNotificationEnabledRef.current = isNotificationEnabled;
@@ -247,6 +279,15 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const clearSignalHistory = useCallback(() => {
+    lastSignalByPairRef.current.clear();
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(SIGNAL_HISTORY_STORAGE_KEY);
+    }
+    setSignalHistory([]);
+    setLatestSignal(null);
+  }, []);
+
   const analyzeAndDispatch = useCallback(
     (update: KlineUpdate) => {
       const market = analyzeCurrentMarket();
@@ -254,10 +295,14 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       const previousPrice = previousPriceRef.current;
       const direction: PriceChangeDirection =
         previousPrice === 0 || nextPrice >= previousPrice ? "up" : "down";
+      const normalizedPair = normalizePair(market.pair || market.symbol || ETH_USDT_PAIR);
 
       previousPriceRef.current = nextPrice;
+      marketPairRef.current = normalizedPair;
       setEthPrice(nextPrice);
       setPriceChangeDirection(direction);
+      setActiveStrategy(getStrategyForMarket(market));
+      setCooldownRemainingMs(getCooldownRemainingMs(normalizedPair, market.timestamp || Date.now()));
 
       setEthTick((prev) => {
         const previous = prev.price || nextPrice;
@@ -278,7 +323,6 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       });
 
       if (market.longSignal) {
-        const normalizedPair = normalizePair(market.pair || market.symbol);
         const signalAttemptTs = market.timestamp || update.timestamp || Date.now();
 
         if (market.trend !== "UP") {
@@ -293,6 +337,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
         lastSignalByPairRef.current.set(normalizedPair, signalAttemptTs);
         setLatestSignal(signal);
         setSignalHistory((prev) => [signal, ...prev].slice(0, MAX_SIGNAL_HISTORY));
+        setCooldownRemainingMs(SIGNAL_LOCK_MS);
 
         if (isNotificationEnabledRef.current) {
           void sendSignalAlert(buildSignalAlertPayload(market));
@@ -304,7 +349,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
         previousPrice === 0 ? prev : round2(prev + (nextPrice - previousPrice) * 0.01),
       );
     },
-    [playSignalPing],
+    [canTriggerSignal, getCooldownRemainingMs, playSignalPing],
   );
 
   useEffect(() => {
@@ -322,6 +367,8 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       priceChangeDirection,
       latestSignal,
       signalHistory,
+      activeStrategy,
+      cooldownRemainingMs,
       signals: signalHistory,
       ethTick,
       profit24h,
@@ -329,16 +376,20 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       isLive: status.connected,
       isNotificationEnabled,
       setIsNotificationEnabled,
+      clearSignalHistory,
     }),
     [
       ethPrice,
       priceChangeDirection,
       latestSignal,
       signalHistory,
+      activeStrategy,
+      cooldownRemainingMs,
       ethTick,
       profit24h,
       status,
       isNotificationEnabled,
+      clearSignalHistory,
     ],
   );
 

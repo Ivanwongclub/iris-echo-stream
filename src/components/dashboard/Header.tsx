@@ -1,9 +1,25 @@
-import { Bell, BellRing, Search } from "lucide-react";
+import { Bell, BellRing, Clock, Search } from "lucide-react";
 import { useTradeStream } from "@/hooks/useTradeStream";
 import { Button } from "@/components/ui/button";
 
 export function Header() {
-  const { status, isNotificationEnabled, setIsNotificationEnabled } = useTradeStream();
+  const {
+    status,
+    isNotificationEnabled,
+    setIsNotificationEnabled,
+    activeStrategy,
+    cooldownRemainingMs,
+  } = useTradeStream();
+
+  const cooldownMinutes = Math.floor(cooldownRemainingMs / 60000);
+  const cooldownSeconds = Math.floor((cooldownRemainingMs % 60000) / 1000);
+  const cooldownLabel =
+    cooldownRemainingMs > 0
+      ? `Cooldown Active • ${cooldownMinutes.toString().padStart(2, "0")}:${cooldownSeconds
+          .toString()
+          .padStart(2, "0")}`
+      : null;
+
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
       <div className="h-full px-6 flex items-center justify-between gap-4">
@@ -18,6 +34,25 @@ export function Header() {
           <div className="hidden md:flex items-center gap-2 px-3 h-9 rounded-md bg-muted text-muted-foreground text-sm">
             <Search className="h-4 w-4" />
             <span className="text-xs">Search pairs…</span>
+          </div>
+
+          <div className="hidden lg:flex items-center gap-2 px-3 h-9 rounded-md border border-border bg-card text-xs text-muted-foreground">
+            <span>Strategy:</span>
+            <span
+              className={
+                activeStrategy === "LONG_ONLY"
+                  ? "font-semibold text-success"
+                  : "font-semibold text-fuchsia-accent"
+              }
+            >
+              {activeStrategy === "LONG_ONLY" ? "LONG-ONLY (Bullish)" : "WAITING (Bearish Filter Active)"}
+            </span>
+            {cooldownLabel ? (
+              <span className="ml-2 inline-flex items-center rounded border border-amber-500/30 bg-amber-500/10 text-amber-500 px-2 py-0.5 gap-1">
+                <Clock className="h-3 w-3" />
+                {cooldownLabel}
+              </span>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2 px-3 h-9 rounded-md border border-border bg-card">

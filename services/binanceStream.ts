@@ -1,3 +1,6 @@
+import { DEBUG_MODE } from "../src/config/debug";
+import { logger } from "../src/lib/logger";
+
 const WS_URL = "wss://fstream.binance.com/ws/ethusdt@kline_1m";
 const TARGET_SYMBOL = "ETHUSDT";
 const MAX_CANDLES = 200;
@@ -138,7 +141,9 @@ function parseKline(raw: unknown): Kline | null {
   const symbol = typeof k.s === "string" ? k.s.toUpperCase() : TARGET_SYMBOL;
 
   if (symbol !== TARGET_SYMBOL) {
-    console.warn("Invalid Data: unexpected symbol from stream", symbol);
+    if (DEBUG_MODE) {
+      logger.warn("Invalid Data: unexpected symbol from stream", symbol);
+    }
     return null;
   }
 
@@ -158,7 +163,9 @@ function parseKline(raw: unknown): Kline | null {
     !isValidPricePrecision(symbol, low) ||
     !isValidPricePrecision(symbol, close)
   ) {
-    console.warn("Invalid Data: precision mismatch", symbol);
+    if (DEBUG_MODE) {
+      logger.warn("Invalid Data: precision mismatch", symbol);
+    }
     return null;
   }
 
@@ -179,7 +186,9 @@ function parseKline(raw: unknown): Kline | null {
   }
 
   if (parsedOpen <= 0 || parsedHigh <= 0 || parsedLow <= 0 || parsedClose <= 0 || parsedVolume < 0) {
-    console.warn("Invalid Data: non-positive numeric values", symbol);
+    if (DEBUG_MODE) {
+      logger.warn("Invalid Data: non-positive numeric values", symbol);
+    }
     return null;
   }
 
@@ -231,11 +240,13 @@ function handleMessage(event: MessageEvent) {
 
     const previous = klineBuffer.at(-1);
     if (isInvalidJump(candle.close, previous?.close)) {
-      console.warn("Invalid Data: sudden price jump > 50%", {
-        symbol: candle.symbol,
-        previousClose: previous?.close,
-        currentClose: candle.close,
-      });
+      if (DEBUG_MODE) {
+        logger.warn("Invalid Data: sudden price jump > 50%", {
+          symbol: candle.symbol,
+          previousClose: previous?.close,
+          currentClose: candle.close,
+        });
+      }
       return;
     }
 
@@ -243,7 +254,7 @@ function handleMessage(event: MessageEvent) {
     upsertKline(candle);
     publishLatest(candle);
   } catch (error) {
-    console.error("Unable to parse Binance message", error);
+    logger.error("Unable to parse Binance message", error);
   }
 }
 
@@ -300,7 +311,7 @@ function restart(reason: string) {
   }
 
   const delay = getReconnectDelay(reconnectAttempts);
-  console.warn(`Restarting Binance stream (${reason}). Reconnect in ${Math.round(delay)}ms`);
+  logger.warn(`Restarting Binance stream (${reason}). Reconnect in ${Math.round(delay)}ms`);
   reconnectAttempts += 1;
 
   reconnectTimer = setTimeout(() => {
