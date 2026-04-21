@@ -15,6 +15,7 @@ import {
 } from "../../services/binanceStream";
 import { analyzeCurrentMarket } from "../../services/tradingAlgo";
 import { sendSignalAlert } from "../../services/telegramService";
+import { logger } from "@/lib/logger";
 import type { PriceTick, SystemStatus, TradeSignal } from "@/services/types";
 
 export type PriceChangeDirection = "up" | "down";
@@ -42,6 +43,7 @@ const SIGNAL_HISTORY_STORAGE_KEY = "iris-echo-stream:signal-history";
 const MAX_SIGNAL_HISTORY = 20;
 const SIGNAL_LOCK_MS = 15 * 60 * 1000;
 const ETH_USDT_PAIR = "ETH/USDT";
+const PRICE_EPSILON = 1e-8;
 
 function normalizePair(symbol: string): string {
   if (symbol.includes("/")) {
@@ -55,6 +57,10 @@ function normalizePair(symbol: string): string {
 
 function round2(value: number): number {
   return Number(value.toFixed(2));
+}
+
+function hasRisen(current: number, previous: number): boolean {
+  return Number((current - previous).toFixed(4)) > PRICE_EPSILON;
 }
 
 function toSignal(value: unknown): TradeSignal | null {
@@ -192,6 +198,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   const previousPriceRef = useRef(0);
   const lastSignalByPairRef = useRef<Map<string, number>>(new Map());
   const marketPairRef = useRef(ETH_USDT_PAIR);
+  const streamSubscriptionRef = useRef<(() => void) | null>(null);
 
   const getCooldownRemainingMs = useCallback((pair: string, at = Date.now()): number => {
     const normalizedPair = normalizePair(pair);
@@ -212,7 +219,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       return "WAITING";
     }
 
-    return market.currentPrice > market.ema200 ? "LONG_ONLY" : "WAITING";
+    return hasRisen(market.currentPrice, market.ema200) ? "LONG_ONLY" : "WAITING";
   };
 
   useEffect(() => {
@@ -290,11 +297,20 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
 
   const analyzeAndDispatch = useCallback(
     (update: KlineUpdate) => {
-      const market = analyzeCurrentMarket();
+      let market: ReturnType<typeof analyzeCurrentMarket> | null = null;
+      try {
+        market = analyzeCurrentMarket();
+      } catch (error) {
+        logger.error("Market analysis failed", error);
+        return;
+      }
+      if (!market) return;
       const nextPrice = round2(update.price);
       const previousPrice = previousPriceRef.current;
       const direction: PriceChangeDirection =
-        previousPrice === 0 || nextPrice >= previousPrice ? "up" : "down";
+        previousPrice === 0 || hasRisen(nextPrice, previousPrice) || nextPrice === previousPrice
+          ? "up"
+          : "down";
       const normalizedPair = normalizePair(market.pair || market.symbol || ETH_USDT_PAIR);
 
       previousPriceRef.current = nextPrice;
@@ -340,7 +356,9 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
         setCooldownRemainingMs(SIGNAL_LOCK_MS);
 
         if (isNotificationEnabledRef.current) {
-          void sendSignalAlert(buildSignalAlertPayload(market));
+          void sendSignalAlert(buildSignalAlertPayload(market)).catch((error) => {
+            logger.error("Telegram alert failed", error);
+          });
           playSignalPing();
         }
       }
@@ -353,10 +371,21 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (streamSubscriptionRef.current) {
+      streamSubscriptionRef.current();
+      streamSubscriptionRef.current = null;
+    }
+
     const unsubscribe = subscribeLatestKline(analyzeAndDispatch);
+    streamSubscriptionRef.current = unsubscribe;
 
     return () => {
-      unsubscribe();
+      if (streamSubscriptionRef.current) {
+        streamSubscriptionRef.current();
+        streamSubscriptionRef.current = null;
+      }
+      previousPriceRef.current = 0;
+      marketPairRef.current = ETH_USDT_PAIR;
       stopBinanceStream();
     };
   }, [analyzeAndDispatch]);

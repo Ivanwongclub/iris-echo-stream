@@ -1,6 +1,11 @@
-import { LayoutDashboard, Activity, LineChart, Wallet, Settings, Zap } from "lucide-react";
+import { LayoutDashboard, Activity, LineChart, Settings, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "@tanstack/react-router";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 
 const nav = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/" },
@@ -34,25 +39,33 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
           </span>
         </div>
       </div>
-      <nav className="flex-1 p-3 space-y-1">
-        {nav.map((item) => (
-          <Link
-            key={item.label}
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-              isActive(item.to)
-                ? "bg-primary text-primary-foreground"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-            )}
-            to={item.to}
-            onClick={() => {
-              onNavigate?.();
-            }}
-          >
-            <item.icon className="h-4 w-4" />
-            {item.label}
-          </Link>
-        ))}
+      <nav className="flex-1 p-3">
+        <SidebarMenu>
+          {nav.map((item) => (
+            <SidebarMenuItem key={item.label}>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive(item.to)}
+                className={cn(
+                  "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                  "data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:font-semibold",
+                  "focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                )}
+              >
+                <Link
+                  to={item.to}
+                  onClick={() => {
+                    onNavigate?.();
+                  }}
+                  className="flex items-center gap-3 w-full"
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
       </nav>
       <div className="p-4 border-t border-border">
         <div className="rounded-md bg-accent/50 p-3">

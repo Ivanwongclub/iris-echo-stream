@@ -62,6 +62,20 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
+const EPSILON = 1e-8;
+
+function round4(value: number): number {
+  return Number(value.toFixed(4));
+}
+
+function gt(a: number, b: number): boolean {
+  return round4(a) - round4(b) > EPSILON;
+}
+
+function gte(a: number, b: number): boolean {
+  return round4(a) + EPSILON >= round4(b);
+}
+
 function hasEnoughCandles(candles: Kline[], need: number): boolean {
   return candles.length >= need;
 }
@@ -256,7 +270,8 @@ export class TradingAlgo {
     const bollinger = calculateBollinger(closes, this.config.bbPeriod, this.config.bbMultiplier);
     const ema200 = emaResult?.current ?? null;
 
-    const trend: TrendDirection = ema200 !== null && currentPrice > ema200 ? "UP" : "DOWN";
+    const trend: TrendDirection =
+      ema200 !== null && gt(currentPrice, ema200) ? "UP" : "DOWN";
     const rsiCurrent =
       rsiResult === null || rsiResult.current === null || rsiResult.current === undefined
         ? null
@@ -267,13 +282,15 @@ export class TradingAlgo {
         : clampDecimal(rsiResult.previous);
 
     const momentumCrossAbove40 =
-      rsiResult !== null && rsiResult.current > 40 && rsiResult.previous <= 40;
-    const entryZone = bollinger !== null && currentPrice > bollinger.middle;
+      rsiResult !== null &&
+      gt(rsiResult.current, 40) &&
+      !gt(rsiResult.previous, 40);
+    const entryZone = bollinger !== null && gt(currentPrice, bollinger.middle);
 
     const volatilityOk =
       atr14 !== null &&
-      atr14 >= round2(currentPrice * this.config.atrMinRatio) &&
-      atr14 <= round2(currentPrice * this.config.atrMaxRatio);
+      gte(atr14, round2(currentPrice * this.config.atrMinRatio)) &&
+      !gt(atr14, round2(currentPrice * this.config.atrMaxRatio));
 
     const reasons: string[] = [];
     if (!hasEnoughCandles(candles, this.config.atrPeriod + 1)) reasons.push("Not enough candles for ATR");
