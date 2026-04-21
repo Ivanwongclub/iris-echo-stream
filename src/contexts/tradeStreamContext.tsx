@@ -37,6 +37,7 @@ const TradeStreamContext = createContext<TradeStreamContextValue | null>(null);
 
 const SIGNAL_HISTORY_STORAGE_KEY = "iris-echo-stream:signal-history";
 const MAX_SIGNAL_HISTORY = 50;
+const SIGNAL_LOCK_MS = 15 * 60 * 1000;
 
 function normalizePair(symbol: string): string {
   if (symbol.includes("/")) {
@@ -183,10 +184,23 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
 
   const isNotificationEnabledRef = useRef(true);
   const previousPriceRef = useRef(0);
-  const latestLoadedSignalMinute = initialSignalHistory[0]
-    ? Math.floor(initialSignalHistory[0].timestamp / 60_000)
-    : null;
-  const lastSignalMinuteRef = useRef<number | null>(latestLoadedSignalMinute);
+  const lastSignalByPairRef = useRef<Map<string, number>>(new Map());
+  const canTriggerSignal = (pair: string, at: number) => {
+    const normalizedPair = normalizePair(pair);
+    const existing = lastSignalByPairRef.current.get(normalizedPair);
+    if (existing === undefined) return true;
+    return at - existing >= SIGNAL_LOCK_MS;
+  };
+
+  useEffect(() => {
+    initialSignalHistory.forEach((signal) => {
+      const normalizedPair = normalizePair(signal.pair);
+      const existing = lastSignalByPairRef.current.get(normalizedPair);
+      if (existing === undefined || existing < signal.timestamp) {
+        lastSignalByPairRef.current.set(normalizedPair, signal.timestamp);
+      }
+    });
+  }, [initialSignalHistory]);
 
   useEffect(() => {
     isNotificationEnabledRef.current = isNotificationEnabled;
@@ -264,17 +278,25 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       });
 
       if (market.longSignal) {
-        const signalMinute = Math.floor(market.timestamp / 60_000);
-        if (lastSignalMinuteRef.current !== signalMinute) {
-          const signal = normalizeSignalFromMarket(market);
-          lastSignalMinuteRef.current = signalMinute;
-          setLatestSignal(signal);
-          setSignalHistory((prev) => [signal, ...prev].slice(0, MAX_SIGNAL_HISTORY));
+        const normalizedPair = normalizePair(market.pair || market.symbol);
+        const signalAttemptTs = market.timestamp || update.timestamp || Date.now();
 
-          if (isNotificationEnabledRef.current) {
-            void sendSignalAlert(buildSignalAlertPayload(market));
-            playSignalPing();
-          }
+        if (market.trend !== "UP") {
+          return;
+        }
+
+        if (market.signalLocked || !canTriggerSignal(normalizedPair, signalAttemptTs)) {
+          return;
+        }
+
+        const signal = normalizeSignalFromMarket(market);
+        lastSignalByPairRef.current.set(normalizedPair, signalAttemptTs);
+        setLatestSignal(signal);
+        setSignalHistory((prev) => [signal, ...prev].slice(0, MAX_SIGNAL_HISTORY));
+
+        if (isNotificationEnabledRef.current) {
+          void sendSignalAlert(buildSignalAlertPayload(market));
+          playSignalPing();
         }
       }
 

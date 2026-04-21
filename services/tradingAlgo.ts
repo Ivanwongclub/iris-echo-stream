@@ -31,6 +31,7 @@ export interface MarketSignal {
   status?: string;
   rsi?: number | null;
   atr?: number | null;
+  signalLocked: boolean;
 }
 
 interface AlgoConfig {
@@ -41,6 +42,7 @@ interface AlgoConfig {
   bbMultiplier: number;
   atrMinRatio: number;
   atrMaxRatio: number;
+  signalCooldownMs: number;
 }
 
 const DEFAULT_CONFIG: AlgoConfig = {
@@ -51,6 +53,7 @@ const DEFAULT_CONFIG: AlgoConfig = {
   bbMultiplier: 2,
   atrMinRatio: 0.001,
   atrMaxRatio: 0.06,
+  signalCooldownMs: 15 * 60 * 1000,
 };
 
 function round2(value: number): number {
@@ -65,7 +68,10 @@ function clampDecimal(value: number): number {
   return Number.isFinite(value) ? round2(value) : value;
 }
 
-function calculateEMA(closes: number[], period: number): { current: number; values: number[] } | null {
+function calculateEMA(
+  closes: number[],
+  period: number,
+): { current: number; values: number[] } | null {
   if (closes.length < period) return null;
 
   const closesRounded = closes.map(round2);
@@ -156,8 +162,8 @@ function calculateRSI(closes: number[], period: number): { current: number; prev
   const previous = rsis[rsis.length - 2];
 
   return {
-    current: clampDecimal(current),
-    previous: clampDecimal(previous),
+    current,
+    previous,
   };
 }
 
@@ -178,7 +184,32 @@ function calculateBollinger(closes: number[], period: number, multiplier: number
 }
 
 export class TradingAlgo {
+  private readonly signalHistoryBySymbol = new Map<string, number>();
+
   constructor(private readonly config: AlgoConfig = DEFAULT_CONFIG) {}
+
+  private normalizeSymbol(symbol: string): string {
+    if (symbol.includes("/")) {
+      return symbol.replace("/", "");
+    }
+
+    return symbol || "ETHUSDT";
+  }
+
+  private canEmitSignalForSymbol(symbol: string, timestamp: number): boolean {
+    const normalized = this.normalizeSymbol(symbol);
+    const lastEmitted = this.signalHistoryBySymbol.get(normalized);
+    if (lastEmitted === undefined) {
+      return true;
+    }
+
+    return timestamp - lastEmitted >= this.config.signalCooldownMs;
+  }
+
+  private setLastSignalForSymbol(symbol: string, timestamp: number): void {
+    const normalized = this.normalizeSymbol(symbol);
+    this.signalHistoryBySymbol.set(normalized, timestamp);
+  }
 
   analyzeCurrentMarket(): MarketSignal {
     const now = Date.now();
@@ -205,6 +236,7 @@ export class TradingAlgo {
         momentumCrossAbove40: false,
         volatilityOk: false,
         longSignal: false,
+        signalLocked: false,
         reasons: [
           candles.length === 0
             ? "Waiting for candle data"
@@ -223,6 +255,15 @@ export class TradingAlgo {
     const ema200 = emaResult?.current ?? null;
 
     const trend: TrendDirection = ema200 !== null && currentPrice > ema200 ? "UP" : "DOWN";
+    const rsiCurrent =
+      rsiResult === null || rsiResult.current === null || rsiResult.current === undefined
+        ? null
+        : clampDecimal(rsiResult.current);
+    const rsiPrevious =
+      rsiResult === null || rsiResult.previous === null || rsiResult.previous === undefined
+        ? null
+        : clampDecimal(rsiResult.previous);
+
     const momentumCrossAbove40 =
       rsiResult !== null && rsiResult.current > 40 && rsiResult.previous <= 40;
     const entryZone = bollinger !== null && currentPrice > bollinger.middle;
@@ -241,25 +282,54 @@ export class TradingAlgo {
     if (!entryZone) reasons.push("Price is not above BB middle");
     if (!volatilityOk) reasons.push("ATR volatility check failed");
 
-    const longSignal = trend === "UP" && momentumCrossAbove40 && entryZone && volatilityOk;
+    const cooldownActive = !this.canEmitSignalForSymbol(latestSymbol, latest.closeTime);
+    if (cooldownActive) {
+      reasons.push("Signal lock active for pair (15m cooldown)");
+    }
+
+    const longSignalCandidate = trend === "UP" && momentumCrossAbove40 && entryZone && volatilityOk;
+    const longSignal = longSignalCandidate && !cooldownActive;
+
+    if (cooldownActive && longSignalCandidate) {
+      reasons.push("Signal suppressed by cooldown");
+    }
+
+    if (longSignal) {
+      this.setLastSignalForSymbol(latestSymbol, latest.closeTime);
+    }
+
+    if (ema200 !== null && atr14 !== null && rsiResult !== null && bollinger !== null) {
+      console.table([
+        {
+          Price: currentPrice,
+          EMA200: ema200,
+          RSI: rsiCurrent,
+          BB_Middle: bollinger.middle,
+          symbol: latestSymbol,
+          timestamp: latest.closeTime,
+          signalLocked: cooldownActive,
+        },
+      ]);
+    }
 
     return {
       isReady: ema200 !== null && atr14 !== null && rsiResult !== null && bollinger !== null,
       symbol: latestSymbol,
       timestamp: latest.closeTime,
       currentPrice,
-      trend: trend,
+      trend,
       ema200,
       atr14,
-      rsi14: rsiResult?.current ?? null,
-      rsi14Previous: rsiResult?.previous ?? null,
+      rsi14: rsiCurrent,
+      rsi14Previous: rsiPrevious,
       bollinger20_2: bollinger,
       momentumCrossAbove40,
       volatilityOk,
       longSignal,
+      signalLocked: cooldownActive,
       reasons,
       candleCount: count,
-      rsi: rsiResult?.current ?? null,
+      rsi: rsiCurrent,
       atr: atr14,
       pair: normalizePair(latestSymbol),
     };

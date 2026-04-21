@@ -1,4 +1,5 @@
 const WS_URL = "wss://fstream.binance.com/ws/ethusdt@kline_1m";
+const TARGET_SYMBOL = "ETHUSDT";
 const MAX_CANDLES = 200;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
@@ -39,6 +40,52 @@ let lastMessageAt = 0;
 
 const latestKlineEvent = "latest-kline";
 const broadcaster = new EventTarget();
+
+const SYMBOL_PRICE_DECIMALS: Record<string, number> = {
+  ETHUSDT: 2,
+};
+
+function getExpectedPriceDecimals(symbol: string): number {
+  return SYMBOL_PRICE_DECIMALS[symbol.toUpperCase()] ?? 2;
+}
+
+function decimalsFromString(value: string): number {
+  const parts = value.includes(".") ? value.split(".") : [value, ""];
+  if (parts.length !== 2) {
+    return 0;
+  }
+
+  return parts[1].replace(/0+$/, "").length;
+}
+
+function isValidPricePrecision(symbol: string, value: string): boolean {
+  const expectedDecimals = getExpectedPriceDecimals(symbol);
+  const valueDecimals = decimalsFromString(value);
+
+  if (Number.isNaN(Number(value))) {
+    return false;
+  }
+
+  return valueDecimals <= expectedDecimals;
+}
+
+function parseNumber(value: unknown): number | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isInvalidJump(price: number, previous: number | undefined): boolean {
+  if (!previous || previous <= 0) {
+    return false;
+  }
+
+  const drift = Math.abs(price - previous) / previous;
+  return drift > 0.5;
+}
 
 function startHeartbeatCheck() {
   if (heartbeatTimer) {
@@ -88,17 +135,63 @@ function parseKline(raw: unknown): Kline | null {
   }
 
   const k = event.k;
-  const symbol = typeof k.s === "string" ? k.s : "ETHUSDT";
+  const symbol = typeof k.s === "string" ? k.s.toUpperCase() : TARGET_SYMBOL;
+
+  if (symbol !== TARGET_SYMBOL) {
+    console.warn("Invalid Data: unexpected symbol from stream", symbol);
+    return null;
+  }
+
+  const open = typeof k.o === "string" ? k.o : null;
+  const high = typeof k.h === "string" ? k.h : null;
+  const low = typeof k.l === "string" ? k.l : null;
+  const close = typeof k.c === "string" ? k.c : null;
+  const volume = typeof k.v === "string" ? k.v : null;
+
+  if (!open || !high || !low || !close || !volume) {
+    return null;
+  }
+
+  if (
+    !isValidPricePrecision(symbol, open) ||
+    !isValidPricePrecision(symbol, high) ||
+    !isValidPricePrecision(symbol, low) ||
+    !isValidPricePrecision(symbol, close)
+  ) {
+    console.warn("Invalid Data: precision mismatch", symbol);
+    return null;
+  }
+
+  const parsedOpen = parseNumber(open);
+  const parsedHigh = parseNumber(high);
+  const parsedLow = parseNumber(low);
+  const parsedClose = parseNumber(close);
+  const parsedVolume = parseNumber(volume);
+
+  if (
+    parsedOpen === null ||
+    parsedHigh === null ||
+    parsedLow === null ||
+    parsedClose === null ||
+    parsedVolume === null
+  ) {
+    return null;
+  }
+
+  if (parsedOpen <= 0 || parsedHigh <= 0 || parsedLow <= 0 || parsedClose <= 0 || parsedVolume < 0) {
+    console.warn("Invalid Data: non-positive numeric values", symbol);
+    return null;
+  }
 
   return {
     symbol,
     openTime: Number(k.t ?? 0),
     closeTime: Number(k.T ?? 0),
-    open: Number(k.o ?? 0),
-    high: Number(k.h ?? 0),
-    low: Number(k.l ?? 0),
-    close: Number(k.c ?? 0),
-    volume: Number(k.v ?? 0),
+    open: parsedOpen,
+    high: parsedHigh,
+    low: parsedLow,
+    close: parsedClose,
+    volume: parsedVolume,
     isFinal: Boolean(k.x),
   };
 }
@@ -133,6 +226,16 @@ function handleMessage(event: MessageEvent) {
     const data = JSON.parse(event.data);
     const candle = parseKline(data);
     if (!candle) {
+      return;
+    }
+
+    const previous = klineBuffer.at(-1);
+    if (isInvalidJump(candle.close, previous?.close)) {
+      console.warn("Invalid Data: sudden price jump > 50%", {
+        symbol: candle.symbol,
+        previousClose: previous?.close,
+        currentClose: candle.close,
+      });
       return;
     }
 
