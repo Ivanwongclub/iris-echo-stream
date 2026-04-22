@@ -43,6 +43,8 @@ interface TradeStreamContextValue {
   isLive: boolean;
   isNotificationEnabled: boolean;
   setIsNotificationEnabled: (enabled: boolean) => void;
+  atrMultiplier: number;
+  setAtrMultiplier: (value: number) => void;
   clearSignalHistory: () => void;
   refreshStream: () => void;
 }
@@ -138,6 +140,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
     timestamp: 0,
   });
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(true);
+  const [atrMultiplier, setAtrMultiplier] = useState(2.5);
 
   const isNotificationEnabledRef = useRef(true);
   const previousPriceRef = useRef(0);
@@ -400,6 +403,8 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       isLive: status.connected,
       isNotificationEnabled,
       setIsNotificationEnabled,
+      atrMultiplier,
+      setAtrMultiplier,
       clearSignalHistory,
       refreshStream,
     }),
@@ -419,6 +424,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       profit24h,
       status,
       isNotificationEnabled,
+      atrMultiplier,
       clearSignalHistory,
       refreshStream,
     ],

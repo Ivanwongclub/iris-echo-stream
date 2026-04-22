@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { useTradeStream } from "@/hooks/useTradeStream";
-import { runBacktestFor7Days } from "../../services/backtestEngine";
+import { runBacktestFor7Days } from "@/services/backtestEngine";
 
 interface BacktestResultState {
   totalSignals: number;

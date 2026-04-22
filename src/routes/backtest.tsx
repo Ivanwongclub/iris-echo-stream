@@ -16,12 +16,12 @@ interface BacktestResultState {
 function BacktestPage() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<BacktestResultState | null>(null);
-  const { isNotificationEnabled } = useTradeStream();
+  const { isNotificationEnabled, atrMultiplier } = useTradeStream();
 
   const runBacktest = async () => {
     setRunning(true);
     try {
-      const payload = await runBacktestFor7Days({ atrMultiplier: 2.5, symbol: "ETHUSDT" });
+      const payload = await runBacktestFor7Days({ atrMultiplier, symbol: "ETHUSDT" });
       setResult({
         totalSignals: payload.totalSignals,
         winRatePercent: payload.winRatePercent,

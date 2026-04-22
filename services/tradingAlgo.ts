@@ -47,6 +47,10 @@ interface AlgoConfig {
   signalCooldownMs: number;
 }
 
+interface AnalyzeOptions {
+  atrMultiplier?: number;
+}
+
 const DEFAULT_CONFIG: AlgoConfig = {
   emaPeriod: 200,
   atrPeriod: 14,
@@ -227,12 +231,13 @@ export class TradingAlgo {
     this.signalHistoryBySymbol.set(normalized, timestamp);
   }
 
-  analyzeCurrentMarket(): MarketSignal {
+  private analyzeCandles(candlesInput: Kline[], options: AnalyzeOptions = {}): MarketSignal {
     const now = Date.now();
-    const candles = getLatestKlines().sort((a, b) => a.openTime - b.openTime);
+    const candles = [...candlesInput].sort((a, b) => a.openTime - b.openTime);
     const count = candles.length;
     const symbols = candles.map((c) => c.symbol);
     const latestSymbol = symbols.length > 0 ? symbols[symbols.length - 1] : "ETHUSDT";
+    const atrMultiplier = options.atrMultiplier ?? 2.5;
 
     const closes = candles.map((candle) => round2(candle.close));
     const has200 = hasEnoughCandles(candles, this.config.emaPeriod);
@@ -333,6 +338,11 @@ export class TradingAlgo {
       }
     }
 
+    const stopLoss =
+      atr14 !== null ? round2(currentPrice - atr14 * atrMultiplier) : undefined;
+    const takeProfit1 =
+      atr14 !== null ? round2(currentPrice + atr14 * atrMultiplier) : undefined;
+
     return {
       isReady: ema200 !== null && atr14 !== null && rsiResult !== null && bollinger !== null,
       symbol: latestSymbol,
@@ -353,7 +363,18 @@ export class TradingAlgo {
       rsi: rsiCurrent,
       atr: atr14,
       pair: normalizePair(latestSymbol),
+      entryPrice: currentPrice,
+      stopLoss,
+      takeProfit1,
     };
+  }
+
+  analyzeCurrentMarket(): MarketSignal {
+    return this.analyzeCandles(getLatestKlines());
+  }
+
+  analyzeFromCandles(candles: Kline[], options: AnalyzeOptions = {}): MarketSignal {
+    return this.analyzeCandles(candles, options);
   }
 }
 
@@ -371,4 +392,25 @@ const tradingAlgo = new TradingAlgo();
 
 export function analyzeCurrentMarket(): MarketSignal {
   return tradingAlgo.analyzeCurrentMarket();
+}
+
+export function getKlineSeriesFromHistory(
+  candles: Array<
+    Pick<Kline, "openTime" | "closeTime" | "open" | "high" | "low" | "close" | "volume"> & {
+      symbol?: string;
+      isFinal?: boolean;
+    }
+  >,
+): Kline[] {
+  return candles.map((candle) => ({
+    symbol: candle.symbol ?? "ETHUSDT",
+    openTime: candle.openTime,
+    closeTime: candle.closeTime,
+    open: round2(candle.open),
+    high: round2(candle.high),
+    low: round2(candle.low),
+    close: round2(candle.close),
+    volume: round2(candle.volume),
+    isFinal: candle.isFinal ?? true,
+  }));
 }
