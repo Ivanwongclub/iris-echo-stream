@@ -31,6 +31,14 @@ interface TradeStreamContextValue {
   trendStrengthDirection: "UP" | "DOWN" | "FLAT";
   trendStrengthReady: boolean;
   ema200: number | null;
+  chartSeries: Array<{
+    timestamp: number;
+    price: number;
+    ema200: number | null;
+    bbUpper: number | null;
+    bbLower: number | null;
+    rsi: number | null;
+  }>;
   recentKlines: Kline[];
   latestSignal: TradeSignal | null;
   signalHistory: TradeSignal[];
@@ -57,6 +65,8 @@ const MAX_SIGNAL_HISTORY = 20;
 const SIGNAL_LOCK_MS = 15 * 60 * 1000;
 const ETH_USDT_PAIR = "ETH/USDT";
 const PRICE_EPSILON = 1e-8;
+const CHART_SAMPLE_MS = 5_000;
+const MAX_CHART_POINTS = 120;
 
 function normalizePair(symbol: string): string {
   if (symbol.includes("/")) {
@@ -120,6 +130,16 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   const [trendStrengthDirection, setTrendStrengthDirection] = useState<"UP" | "DOWN" | "FLAT">("FLAT");
   const [trendStrengthReady, setTrendStrengthReady] = useState(false);
   const [ema200, setEma200] = useState<number | null>(null);
+  const [chartSeries, setChartSeries] = useState<
+    Array<{
+      timestamp: number;
+      price: number;
+      ema200: number | null;
+      bbUpper: number | null;
+      bbLower: number | null;
+      rsi: number | null;
+    }>
+  >([]);
   const [recentKlines, setRecentKlines] = useState<Kline[]>([]);
   const [latestSignal, setLatestSignal] = useState<TradeSignal | null>(null);
   const [signalHistory, setSignalHistory] = useState<TradeSignal[]>([]);
@@ -144,6 +164,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
 
   const isNotificationEnabledRef = useRef(true);
   const previousPriceRef = useRef(0);
+  const lastChartSampleAtRef = useRef(0);
   const lastSignalByPairRef = useRef<Map<string, number>>(new Map());
   const marketPairRef = useRef(ETH_USDT_PAIR);
   const streamSubscriptionRef = useRef<(() => void) | null>(null);
@@ -295,6 +316,26 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       }
       setEma200(market.ema200 ?? null);
       setRecentKlines(getLatestKlines().slice(-50));
+      const sampleTimestamp = market.timestamp || update.timestamp || Date.now();
+      if (
+        lastChartSampleAtRef.current === 0 ||
+        sampleTimestamp - lastChartSampleAtRef.current >= CHART_SAMPLE_MS
+      ) {
+        lastChartSampleAtRef.current = sampleTimestamp;
+        setChartSeries((prev) =>
+          [
+            ...prev,
+            {
+              timestamp: sampleTimestamp,
+              price: nextPrice,
+              ema200: market.ema200 ?? null,
+              bbUpper: market.bollinger20_2?.upper ?? null,
+              bbLower: market.bollinger20_2?.lower ?? null,
+              rsi: market.rsi14 ?? null,
+            },
+          ].slice(-MAX_CHART_POINTS),
+        );
+      }
       setActiveStrategy(getStrategyForMarket(market));
       setCooldownRemainingMs(getCooldownRemainingMs(normalizedPair, market.timestamp || Date.now()));
 
@@ -378,6 +419,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
         streamSubscriptionRef.current = null;
       }
       previousPriceRef.current = 0;
+      lastChartSampleAtRef.current = 0;
       marketPairRef.current = ETH_USDT_PAIR;
       stopBinanceStream();
     };
@@ -394,6 +436,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       trendStrengthDirection,
       trendStrengthReady,
       ema200,
+      chartSeries,
       recentKlines,
       cooldownRemainingMs,
       signals: signalHistory,
@@ -418,6 +461,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
       trendStrengthDirection,
       trendStrengthReady,
       ema200,
+      chartSeries,
       recentKlines,
       cooldownRemainingMs,
       ethTick,
