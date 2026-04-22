@@ -24,6 +24,15 @@ import type { PriceTick, SystemStatus, TradeSignal } from "@/services/types";
 
 export type PriceChangeDirection = "up" | "down";
 
+export interface ChartSeriesPoint {
+  timestamp: number;
+  price: number;
+  ema200: number | null;
+  bbUpper: number | null;
+  bbLower: number | null;
+  rsi: number | null;
+}
+
 interface TradeStreamContextValue {
   ethPrice: number;
   priceChangeDirection: PriceChangeDirection;
@@ -31,14 +40,7 @@ interface TradeStreamContextValue {
   trendStrengthDirection: "UP" | "DOWN" | "FLAT";
   trendStrengthReady: boolean;
   ema200: number | null;
-  chartSeries: Array<{
-    timestamp: number;
-    price: number;
-    ema200: number | null;
-    bbUpper: number | null;
-    bbLower: number | null;
-    rsi: number | null;
-  }>;
+  chartSeries: ChartSeriesPoint[];
   recentKlines: Kline[];
   latestSignal: TradeSignal | null;
   signalHistory: TradeSignal[];
@@ -130,16 +132,7 @@ export function TradeStreamProvider({ children }: { children: ReactNode }) {
   const [trendStrengthDirection, setTrendStrengthDirection] = useState<"UP" | "DOWN" | "FLAT">("FLAT");
   const [trendStrengthReady, setTrendStrengthReady] = useState(false);
   const [ema200, setEma200] = useState<number | null>(null);
-  const [chartSeries, setChartSeries] = useState<
-    Array<{
-      timestamp: number;
-      price: number;
-      ema200: number | null;
-      bbUpper: number | null;
-      bbLower: number | null;
-      rsi: number | null;
-    }>
-  >([]);
+  const [chartSeries, setChartSeries] = useState<ChartSeriesPoint[]>([]);
   const [recentKlines, setRecentKlines] = useState<Kline[]>([]);
   const [latestSignal, setLatestSignal] = useState<TradeSignal | null>(null);
   const [signalHistory, setSignalHistory] = useState<TradeSignal[]>([]);

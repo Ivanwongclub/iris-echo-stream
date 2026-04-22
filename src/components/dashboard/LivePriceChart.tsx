@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useTradeStream } from "@/hooks/useTradeStream";
+import type { ChartSeriesPoint } from "@/contexts/tradeStreamContext";
 
 const IRIS_COLOR = "#5D5CDE";
 const ONYX_COLOR = "#1A1C1E";
@@ -18,6 +19,13 @@ const AMBER_COLOR = "#FFBF00";
 const RSI_GREEN = "#10B981";
 const RSI_RED = "#F43F5E";
 const BB_COLOR = "#94A3B8";
+
+interface VisibleSignalPoint {
+  id: string;
+  action: "LONG" | "SHORT";
+  timestamp: number;
+  price: number;
+}
 
 function toMinutesSeconds(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString([], {
@@ -32,10 +40,10 @@ export function LivePriceChart() {
   const latestPoint = chartSeries.at(-1);
   const chartStart = chartSeries[0]?.timestamp ?? 0;
   const chartEnd = latestPoint?.timestamp ?? 0;
-  const visibleSignals = signalHistory
+  const visibleSignals: VisibleSignalPoint[] = signalHistory
     .filter((signal) => signal.timestamp >= chartStart && signal.timestamp <= chartEnd)
     .map((signal) => {
-      const anchorPoint =
+      const anchorPoint: ChartSeriesPoint | undefined =
         [...chartSeries].reverse().find((point) => point.timestamp <= signal.timestamp) ?? latestPoint;
       return {
         id: signal.id,
@@ -44,6 +52,13 @@ export function LivePriceChart() {
         price: anchorPoint?.price ?? signal.entryPrice,
       };
     });
+  const rsiSeries = chartSeries.map((point) => ({
+    ...point,
+    rsiAbove40:
+      point.rsi !== null && point.rsi >= 40 ? point.rsi : null,
+    rsiBelow40:
+      point.rsi !== null && point.rsi < 40 ? point.rsi : null,
+  }));
 
   const CustomTooltip = ({
     active,
@@ -118,19 +133,19 @@ export function LivePriceChart() {
   }) => {
     const isLong = action === "LONG";
     const fill = isLong ? RSI_GREEN : RSI_RED;
-    const label = isLong ? "LONG" : "SHORT";
+    const label = isLong ? "L" : "S";
     const arrow = isLong ? "▲" : "▼";
+    const yOffset = isLong ? 16 : -16;
 
     return (
       <g>
-        <circle cx={cx} cy={cy} r={10} fill={fill} opacity={0.16} />
         <text
           x={cx}
-          y={cy - 12}
+          y={cy + yOffset}
           textAnchor="middle"
           fill={fill}
-          fontSize={10}
-          fontWeight={700}
+          fontSize={12}
+          fontWeight={800}
         >
           {arrow} {label}
         </text>
@@ -157,6 +172,20 @@ export function LivePriceChart() {
       <p className="text-2xl font-semibold tabular-nums mt-2">
         ${latestPoint?.price.toFixed(2)}
       </p>
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: IRIS_COLOR }} />
+          Price
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-0.5 w-4 rounded-full" style={{ backgroundColor: AMBER_COLOR }} />
+          EMA 200 (Trend)
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-0.5 w-4 rounded-full border-t border-dashed" style={{ borderColor: BB_COLOR }} />
+          Bollinger Bands
+        </span>
+      </div>
 
       <div className="mt-4 h-[300px] min-h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -169,11 +198,7 @@ export function LivePriceChart() {
             </defs>
             <XAxis
               dataKey="timestamp"
-              tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-              minTickGap={24}
-              tickFormatter={(value) => toMinutesSeconds(Number(value))}
+              hide
             />
             <YAxis
               type="number"
@@ -198,26 +223,8 @@ export function LivePriceChart() {
               isAnimationActive={false}
               connectNulls
             />
-            <Line
-              type="monotone"
-              dataKey="bbUpper"
-              stroke={BB_COLOR}
-              strokeWidth={1}
-              strokeDasharray="4 4"
-              dot={false}
-              isAnimationActive={false}
-              connectNulls
-            />
-            <Line
-              type="monotone"
-              dataKey="bbLower"
-              stroke={BB_COLOR}
-              strokeWidth={1}
-              strokeDasharray="4 4"
-              dot={false}
-              isAnimationActive={false}
-              connectNulls
-            />
+            <Line type="monotone" dataKey="bbUpper" stroke={BB_COLOR} strokeWidth={1} strokeDasharray="4 4" dot={false} isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="bbLower" stroke={BB_COLOR} strokeWidth={1} strokeDasharray="4 4" dot={false} isAnimationActive={false} connectNulls />
             {latestPoint?.ema200 !== null ? (
               <ReferenceLine
                 y={latestPoint.ema200}
@@ -265,8 +272,15 @@ export function LivePriceChart() {
 
       <div className="mt-4 h-20">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartSeries} syncId="eth-live-chart" margin={{ left: 4, right: 8, top: 4, bottom: 0 }}>
-            <XAxis dataKey="timestamp" hide />
+          <LineChart data={rsiSeries} syncId="eth-live-chart" margin={{ left: 4, right: 8, top: 4, bottom: 0 }}>
+            <XAxis
+              dataKey="timestamp"
+              tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              minTickGap={24}
+              tickFormatter={(value) => toMinutesSeconds(Number(value))}
+            />
             <YAxis
               domain={[0, 100]}
               width={36}
@@ -282,8 +296,17 @@ export function LivePriceChart() {
             <ReferenceLine y={70} stroke="#9CA3AF" strokeDasharray="4 4" />
             <Line
               type="monotone"
-              dataKey="rsi"
-              stroke={latestPoint?.rsi !== null && (latestPoint?.rsi ?? 0) >= 40 ? RSI_GREEN : RSI_RED}
+              dataKey="rsiAbove40"
+              stroke={RSI_GREEN}
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={false}
+              connectNulls
+            />
+            <Line
+              type="monotone"
+              dataKey="rsiBelow40"
+              stroke={RSI_RED}
               strokeWidth={2}
               dot={false}
               isAnimationActive={false}
