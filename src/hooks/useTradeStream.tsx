@@ -1,1 +1,10 @@
-export { TradeStreamProvider, useTradeStreamContext as useTradeStream } from "@/contexts/tradeStreamContext";
+import {
+  TradeStreamProvider,
+  useTradeStreamContext,
+} from "@/contexts/tradeStreamContext";
+
+export { TradeStreamProvider };
+
+export function useTradeStream() {
+  return useTradeStreamContext();
+}
